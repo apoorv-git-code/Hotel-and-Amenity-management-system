@@ -1,6 +1,4 @@
-<<<<<<< HEAD
 import gui
-=======
 from customers import (add_customer,view_customers,find,update,delete)
 from rooms import view_rooms
 while(True):
@@ -24,4 +22,3 @@ while(True):
         print("Invalid choice")
 
 
->>>>>>> 64603e03912db81e3e61e126729f3685bde229c2
