@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 from database import db
 
 collection = db["rooms"]
@@ -49,4 +48,3 @@ def view_rooms():
         print("Room no.=",i["room_no"])
         print("type of room =",i["type"])
         print("Price=",i["price"],"\n")
->>>>>>> 64603e03912db81e3e61e126729f3685bde229c2
