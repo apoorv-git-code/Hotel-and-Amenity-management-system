@@ -13,12 +13,12 @@ def add_amenity(name, description):
         "name": name,
         "description": description
     }
-    collection.insert_one(amenity)
+    return collection.insert_one(amenity).inserted_id
 
 
 def view_amenities():
-    return collection.find()
+    return list(collection.find())
 
 
 def delete_amenity(name):
-    collection.delete_one({"name": name})
+    return collection.delete_one({"name": name})

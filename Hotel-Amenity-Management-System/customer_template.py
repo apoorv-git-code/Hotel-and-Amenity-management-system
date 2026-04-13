@@ -1,13 +1,13 @@
-class customer:
-    def __init__(self,name,contact,id):
-        self.name=name
-        self.contact=contact
-        self.id=id
-    
-    def conversion_to_dict(c1):
+class Customer:
+    def __init__(self, name, contact, customer_id):
+        self.name = name
+        self.contact = contact
+        self.id = customer_id
+
+    def to_dict(self):
         return {
-            "name":c1.name,
-            "contact":c1.contact,
-            "id":c1.id
+            "name": self.name,
+            "contact": self.contact,
+            "id": self.id
         }
-        
+

@@ -15,12 +15,12 @@ def add_booking(customer, room_no, date):
         "room_no": room_no,
         "date": date
     }
-    collection.insert_one(booking)
+    return collection.insert_one(booking).inserted_id
 
 
 def view_bookings():
-    return collection.find()
+    return list(collection.find())
 
 
 def cancel_booking(customer):
-    collection.delete_one({"customer": customer})
+    return collection.delete_one({"customer": customer})
