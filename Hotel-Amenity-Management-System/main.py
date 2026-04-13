@@ -1,6 +1,6 @@
 import gui
 from customers import (add_customer,view_customers,find,update,delete)
-from rooms import view_rooms
+from room import view_rooms
 while(True):
     print("1. Add \n2. View all customers \n3. view particular customer \n4.update \n5.delete \n6.view rooms \n7.exit")
     choice=int(input("Enter your choice : "))

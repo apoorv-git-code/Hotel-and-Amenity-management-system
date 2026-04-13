@@ -24,7 +24,7 @@ def view_rooms():
 
 def delete_room(room_no):
     collection.delete_one({"room_no": room_no})
-=======
+    
 from db import rooms
 
 rooms.insert_many([
