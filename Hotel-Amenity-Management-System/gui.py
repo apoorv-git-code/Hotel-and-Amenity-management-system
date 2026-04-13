@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+from auth import authenticate_user, register_user
 
 from hotel import add_hotel, view_hotels
 from room import add_room, view_rooms
@@ -7,6 +8,49 @@ from amenities import add_amenity, view_amenities
 from customers import add_customer, view_customers
 from booking import add_booking, view_bookings
 
+def run_login_screen():
+    login_root = tk.Tk()
+    login_root.title("Login - Hotel Management System")
+    login_root.geometry("400x300")
+    login_root.configure(bg="#2c3e50")
+    
+    tk.Label(login_root, text="Login System", font=("Segoe UI", 16, "bold"), bg="#2c3e50", fg="white").pack(pady=20)
+    
+    tk.Label(login_root, text="Username", bg="#2c3e50", fg="white").pack()
+    username_entry = tk.Entry(login_root)
+    username_entry.pack(pady=5)
+    
+    tk.Label(login_root, text="Password", bg="#2c3e50", fg="white").pack()
+    password_entry = tk.Entry(login_root, show="*")
+    password_entry.pack(pady=5)
+    
+    def on_login():
+        username = username_entry.get()
+        password = password_entry.get()
+        success, msg = authenticate_user(username, password)
+        if success:
+            messagebox.showinfo("Success", msg)
+            login_root.destroy()
+            run_app()
+        else:
+            messagebox.showerror("Error", msg)
+            
+    def on_register():
+        username = username_entry.get()
+        password = password_entry.get()
+        if not username or not password:
+            messagebox.showerror("Error", "Please fill both fields")
+            return
+        success, msg = register_user(username, password)
+        if success:
+            messagebox.showinfo("Success", msg)
+        else:
+            messagebox.showerror("Error", msg)
+            
+    tk.Button(login_root, text="Login", command=on_login, width=15).pack(pady=10)
+    tk.Button(login_root, text="Register", command=on_register, width=15).pack()
+    
+    login_root.mainloop()
 
 def run_app():
     root = tk.Tk()

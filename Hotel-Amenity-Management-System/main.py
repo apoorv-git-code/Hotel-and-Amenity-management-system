@@ -1,4 +1,4 @@
-from gui import run_app
+from gui import run_login_screen
 
 if __name__ == "__main__":
-    run_app()
+    run_login_screen()
