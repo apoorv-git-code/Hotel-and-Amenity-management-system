@@ -1,6 +1,6 @@
 # 🏨 Hotel and Amenity Management System
 
-A **GUI-based Hotel and Amenity Management System** developed using **Python**, **Tkinter**, and **MongoDB**.
+A **GUI-based Hotel and Amenity Management System** developed using **Python**, **Streamlit**, and **MongoDB**.
 This project allows hotel administrators to manage hotel rooms, bookings, customers, and amenities efficiently through a user-friendly graphical interface.
 
 ---

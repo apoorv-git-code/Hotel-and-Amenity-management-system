@@ -448,7 +448,9 @@ def render_sidebar():
         nav_button("Hotels",             "🏨", "Hotels")
         nav_button("Rooms",              "🛏️", "Rooms")
         nav_button("Amenities",          "🌟", "Amenities")
-        nav_button("Customers",          "👤", "Customers")
+        is_admin = st.session_state.get("username", "").lower() == "admin"
+        if is_admin:
+            nav_button("Customers",          "👤", "Customers")
         nav_button("Bookings",           "📋", "Bookings")
 
         st.markdown("<hr style='margin:20px 0 16px;'>", unsafe_allow_html=True)
@@ -479,14 +481,19 @@ def page_dashboard():
     customers = view_customers()
     bookings  = view_bookings()
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    for col, icon, val, label in [
-        (c1, "🏨", len(hotels),    "Hotels"),
-        (c2, "🛏️", len(rooms),     "Rooms"),
-        (c3, "🌟", len(amenities), "Amenities"),
-        (c4, "👤", len(customers), "Customers"),
-        (c5, "📋", len(bookings),  "Bookings"),
-    ]:
+    is_admin = st.session_state.get("username", "").lower() == "admin"
+
+    metrics = [
+        ("🏨", len(hotels),    "Hotels"),
+        ("🛏️", len(rooms),     "Rooms"),
+        ("🌟", len(amenities), "Amenities"),
+    ]
+    if is_admin:
+        metrics.append(("👤", len(customers), "Customers"))
+    metrics.append(("📋", len(bookings),  "Bookings"))
+
+    cols = st.columns(len(metrics))
+    for col, (icon, val, label) in zip(cols, metrics):
         with col:
             st.markdown(metric_card(icon, val, label), unsafe_allow_html=True)
 
@@ -518,45 +525,75 @@ def page_dashboard():
 def page_hotels():
     section_header("🏨", "Hotels Registry")
 
-    tab_view, tab_add = st.tabs(["📋  View All Hotels", "➕  Register Hotel"])
+    is_admin = st.session_state.get("username", "").lower() == "admin"
+    if is_admin:
+        tab_view, tab_add = st.tabs(["📋  View All Hotels", "➕  Register Hotel"])
+    else:
+        tab_view, = st.tabs(["📋  View All Hotels"])
 
     with tab_view:
         hotels = view_hotels()
         if hotels:
             import pandas as pd
-            df = pd.DataFrame(hotels)[["name", "location", "rating"]]
-            df.columns = ["Hotel Name", "Location", "Rating ⭐"]
-            st.dataframe(df, use_container_width=True, hide_index=True)
-            st.caption(f"{len(hotels)} hotel(s) registered")
+            hotel_names = ["All"] + sorted(list(set([h.get("name", "") for h in hotels if h.get("name")])))
+            locations = ["All"] + sorted(list(set([h.get("location", "") for h in hotels if h.get("location")])))
+            
+            st.markdown("##### Filter Hotels")
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                filter_name = st.selectbox("Hotel Name (Drop bar)", hotel_names)
+            with col_b:
+                filter_location = st.selectbox("Location (Drop bar)", locations)
+            with col_c:
+                filter_rating = st.slider("Min Rating (Dragbar)", min_value=1.0, max_value=5.0, step=0.5, value=1.0)
+            
+            filtered_hotels = hotels
+            if filter_name != "All":
+                filtered_hotels = [h for h in filtered_hotels if h.get("name") == filter_name]
+            if filter_location != "All":
+                filtered_hotels = [h for h in filtered_hotels if h.get("location") == filter_location]
+            filtered_hotels = [h for h in filtered_hotels if float(h.get("rating", 0)) >= filter_rating]
+            
+            if filtered_hotels:
+                df = pd.DataFrame(filtered_hotels)[["name", "location", "rating"]]
+                df.columns = ["Hotel Name", "Location", "Rating ⭐"]
+                st.dataframe(df, use_container_width=True, hide_index=True)
+                st.caption(f"{len(filtered_hotels)} hotel(s) found")
+            else:
+                st.info("No hotels match your filters.")
         else:
             st.markdown('<div class="empty-state"><div class="es-icon">🏨</div><div class="es-text">No hotels found</div><div class="es-sub">Use the tab above to register your first hotel.</div></div>', unsafe_allow_html=True)
 
-    with tab_add:
-        st.markdown('<div class="form-title">Hotel Details</div>', unsafe_allow_html=True)
-        with st.form("add_hotel_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                name = st.text_input("Hotel Name *", placeholder="e.g. Grand Hyatt")
-            with col2:
-                location = st.text_input("Location *", placeholder="e.g. New York, USA")
-            rating = st.slider("Star Rating", min_value=1.0, max_value=5.0, step=0.5, value=3.0)
-            submitted = st.form_submit_button("🏨  Register Hotel", use_container_width=True)
-            if submitted:
-                if not name or not location:
-                    st.error("Hotel name and location are required.")
-                else:
-                    result = add_hotel(name, location, rating)
-                    if result:
-                        st.success(f"✅  **{name}** has been registered successfully!")
-                        st.rerun()
+    if is_admin:
+        with tab_add:
+            st.markdown('<div class="form-title">Hotel Details</div>', unsafe_allow_html=True)
+            with st.form("add_hotel_form", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    name = st.text_input("Hotel Name *", placeholder="e.g. Grand Hyatt")
+                with col2:
+                    location = st.text_input("Location *", placeholder="e.g. New York, USA")
+                rating = st.slider("Star Rating", min_value=1.0, max_value=5.0, step=0.1, value=3.0)
+                submitted = st.form_submit_button("🏨  Register Hotel", use_container_width=True)
+                if submitted:
+                    if not name or not location:
+                        st.error("Hotel name and location are required.")
                     else:
-                        st.error("❌  Failed to register hotel. Please check the details and try again.")
-
+                        result = add_hotel(name, location, rating)
+                        if result:
+                            st.success(f"✅  **{name}** has been registered successfully!")
+                            st.rerun()
+                        else:
+                            st.error("❌  Failed to register hotel. Please check the details and try again.")
 
 def page_rooms():
     section_header("🛏️", "Room Management")
 
-    tab_view, tab_add = st.tabs(["📋  View All Rooms", "➕  Add Room"])
+    is_admin = st.session_state.get("username", "").lower() == "admin"
+    if is_admin:
+        tab_view, tab_add = st.tabs(["📋  View All Rooms", "➕  Add Room"])
+    else:
+        tab_view, = st.tabs(["📋  View All Rooms"])
 
     with tab_view:
         rooms = view_rooms()
@@ -569,32 +606,37 @@ def page_rooms():
         else:
             st.markdown('<div class="empty-state"><div class="es-icon">🛏️</div><div class="es-text">No rooms found</div><div class="es-sub">Add your first room using the tab above.</div></div>', unsafe_allow_html=True)
 
-    with tab_add:
-        st.markdown('<div class="form-title">Room Details</div>', unsafe_allow_html=True)
-        with st.form("add_room_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                room_no = st.text_input("Room Number *", placeholder="e.g. 101")
-            with col2:
-                room_type = st.selectbox("Room Type *", ["Single", "Double", "Suite", "Deluxe", "Presidential Suite", "Penthouse"])
-            price = st.number_input("Price Per Night (₹) *", min_value=0.0, step=100.0, value=2000.0)
-            submitted = st.form_submit_button("🛏️  Add Room", use_container_width=True)
-            if submitted:
-                if not room_no:
-                    st.error("Room number is required.")
-                else:
-                    result = add_room(room_no, room_type, price)
-                    if result:
-                        st.success(f"✅  Room **{room_no}** ({room_type}) added at ₹{price:,.0f}/night!")
-                        st.rerun()
+    if is_admin:
+        with tab_add:
+            st.markdown('<div class="form-title">Room Details</div>', unsafe_allow_html=True)
+            with st.form("add_room_form", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    room_no = st.text_input("Room Number *", placeholder="e.g. 101")
+                with col2:
+                    room_type = st.selectbox("Room Type *", ["Single", "Double", "Suite", "Deluxe", "Presidential Suite", "Penthouse"])
+                price = st.number_input("Price Per Night (₹) *", min_value=0.0, step=100.0, value=2000.0)
+                submitted = st.form_submit_button("🛏️  Add Room", use_container_width=True)
+                if submitted:
+                    if not room_no:
+                        st.error("Room number is required.")
                     else:
-                        st.error("❌  Failed to add room.")
+                        result = add_room(room_no, room_type, price)
+                        if result:
+                            st.success(f"✅  Room **{room_no}** ({room_type}) added at ₹{price:,.0f}/night!")
+                            st.rerun()
+                        else:
+                            st.error("❌  Failed to add room.")
 
 
 def page_amenities():
     section_header("🌟", "Amenities Management")
 
-    tab_view, tab_add = st.tabs(["📋  View Amenities", "➕  Add Amenity"])
+    is_admin = st.session_state.get("username", "").lower() == "admin"
+    if is_admin:
+        tab_view, tab_add = st.tabs(["📋  View Amenities", "➕  Add Amenity"])
+    else:
+        tab_view, = st.tabs(["📋  View Amenities"])
 
     with tab_view:
         amenities = view_amenities()
@@ -607,28 +649,56 @@ def page_amenities():
         else:
             st.markdown('<div class="empty-state"><div class="es-icon">🌟</div><div class="es-text">No amenities found</div><div class="es-sub">Add your first amenity using the tab above.</div></div>', unsafe_allow_html=True)
 
-    with tab_add:
-        st.markdown('<div class="form-title">Amenity Details</div>', unsafe_allow_html=True)
-        with st.form("add_amenity_form", clear_on_submit=True):
-            name = st.text_input("Amenity Name *", placeholder="e.g. Rooftop Swimming Pool")
-            description = st.text_area("Description *", placeholder="Describe the amenity in detail…", height=120)
-            submitted = st.form_submit_button("🌟  Add Amenity", use_container_width=True)
-            if submitted:
-                if not name or not description:
-                    st.error("Both name and description are required.")
+    if is_admin:
+        with tab_add:
+            st.markdown('<div class="form-title">Amenity Details</div>', unsafe_allow_html=True)
+
+            predefined_amenities = {
+                "Free Wi-Fi": "High-speed internet access available throughout the property.",
+                "Swimming Pool": "Outdoor/Indoor temperature controlled swimming pool.",
+                "Gym / Fitness Center": "Fully equipped modern fitness center open 24/7.",
+                "Spa & Wellness": "Luxury spa offering massages, sauna, and beauty treatments.",
+                "Restaurant & Bar": "In-house dining and bar featuring international cuisine.",
+                "Room Service": "24-hour room service for food, beverages, and essentials.",
+                "Parking": "Secure and monitored on-site parking for guests.",
+                "Airport Shuttle": "Complimentary pickup and drop-off to the nearest airport.",
+                "Conference Room": "Fully equipped meeting rooms for business conferences.",
+                "Laundry Service": "Same-day laundry, ironing, and dry cleaning services."
+            }
+
+            # Placing selectbox outside the form so it dynamically updates the form fields
+            options = ["-- Custom Amenity / Manual Entry --"] + list(predefined_amenities.keys())
+            selected_option = st.selectbox("Choose Predefined Facility / Amenity", options, help="Select a predefined facility to auto-fill the details, or create your own.")
+
+            with st.form("add_amenity_form", clear_on_submit=True):
+                if selected_option != "-- Custom Amenity / Manual Entry --":
+                    name = st.text_input("Amenity Name *", value=selected_option)
+                    description = st.text_area("Description *", value=predefined_amenities[selected_option], height=120)
                 else:
-                    result = add_amenity(name, description)
-                    if result:
-                        st.success(f"✅  Amenity **{name}** added!")
-                        st.rerun()
+                    name = st.text_input("Amenity Name *", placeholder="e.g. Rooftop Swimming Pool")
+                    description = st.text_area("Description *", placeholder="Describe the amenity in detail…", height=120)
+
+                submitted = st.form_submit_button("🌟  Add Amenity", use_container_width=True)
+                if submitted:
+                    if not name or not description:
+                        st.error("Both name and description are required.")
                     else:
-                        st.error("❌  Failed to add amenity.")
+                        result = add_amenity(name, description)
+                        if result:
+                            st.success(f"✅  Amenity **{name}** added!")
+                            st.rerun()
+                        else:
+                            st.error("❌  Failed to add amenity.")
 
 
 def page_customers():
     section_header("👤", "Customer Directory")
 
-    tab_view, tab_add = st.tabs(["📋  All Customers", "➕  Register Customer"])
+    is_admin = st.session_state.get("username", "").lower() == "admin"
+    if is_admin:
+        tab_view, tab_add = st.tabs(["📋  All Customers", "➕  Register Customer"])
+    else:
+        tab_view, = st.tabs(["📋  All Customers"])
 
     with tab_view:
         customers = view_customers()
@@ -641,31 +711,33 @@ def page_customers():
         else:
             st.markdown('<div class="empty-state"><div class="es-icon">👤</div><div class="es-text">No customers found</div><div class="es-sub">Register your first customer using the tab above.</div></div>', unsafe_allow_html=True)
 
-    with tab_add:
-        st.markdown('<div class="form-title">Customer Details</div>', unsafe_allow_html=True)
-        with st.form("add_customer_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                name = st.text_input("Full Name *", placeholder="e.g. Rahul Sharma")
-            with col2:
-                contact = st.text_input("Contact Number *", placeholder="e.g. +91-9876543210")
-            customer_id = st.text_input("Government ID / Passport No. *", placeholder="e.g. ABCDE1234F")
-            submitted = st.form_submit_button("👤  Register Customer", use_container_width=True)
-            if submitted:
-                if not name or not contact or not customer_id:
-                    st.error("All fields are required.")
-                else:
-                    result = add_customer(name, contact, customer_id)
-                    if result:
-                        st.success(f"✅  Customer **{name}** registered!")
-                        st.rerun()
+    if is_admin:
+        with tab_add:
+            st.markdown('<div class="form-title">Customer Details</div>', unsafe_allow_html=True)
+            with st.form("add_customer_form", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    name = st.text_input("Full Name *", placeholder="e.g. Rahul Sharma")
+                with col2:
+                    contact = st.text_input("Contact Number *", placeholder="e.g. +91-9876543210")
+                customer_id = st.text_input("Government ID / Passport No. *", placeholder="e.g. ABCDE1234F")
+                submitted = st.form_submit_button("👤  Register Customer", use_container_width=True)
+                if submitted:
+                    if not name or not contact or not customer_id:
+                        st.error("All fields are required.")
                     else:
-                        st.error("❌  Failed to register customer.")
+                        result = add_customer(name, contact, customer_id)
+                        if result:
+                            st.success(f"✅  Customer **{name}** registered!")
+                            st.rerun()
+                        else:
+                            st.error("❌  Failed to register customer.")
 
 
 def page_bookings():
     section_header("📋", "Booking Management")
 
+    is_admin = st.session_state.get("username", "").lower() == "admin"
     tab_view, tab_add = st.tabs(["📋  Active Bookings", "➕  New Booking"])
 
     with tab_view:
@@ -734,7 +806,11 @@ def main():
     elif page == "Amenities":
         page_amenities()
     elif page == "Customers":
-        page_customers()
+        is_admin = st.session_state.get("username", "").lower() == "admin"
+        if is_admin:
+            page_customers()
+        else:
+            st.error("🔒 Access Denied: Administrator privileges required.")
     elif page == "Bookings":
         page_bookings()
 

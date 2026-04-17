@@ -27,7 +27,18 @@ def add_hotel(name, location, rating):
 
 
 def view_hotels():
-    return list(collection.find())
+    hotels = list(collection.find())
+    for h in hotels:
+        if "name" not in h:
+            val = h.get("hotel_name") or h.get("hotel name") or h.get("hotel names")
+            h["name"] = val if val is not None else "Unknown"
+        if "location" not in h:
+            val = h.get("city_name") or h.get("city name") or h.get("location")
+            h["location"] = val if val is not None else "Unknown"
+        if "rating" not in h:
+            val = h.get("ratings") or h.get("rating")
+            h["rating"] = float(val) if val is not None else 0.0
+    return hotels
 
 
 def delete_hotel(name):
