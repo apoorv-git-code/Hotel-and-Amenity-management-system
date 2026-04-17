@@ -555,9 +555,63 @@ def page_hotels():
             filtered_hotels = [h for h in filtered_hotels if float(h.get("rating", 0)) >= filter_rating]
             
             if filtered_hotels:
-                df = pd.DataFrame(filtered_hotels)[["name", "location", "rating"]]
-                df.columns = ["Hotel Name", "Location", "Rating ⭐"]
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                import datetime
+                
+                rooms_list = view_rooms()
+                # Get unique, sorted customer names to avoid option shifting and Streamlit errors
+                customers_list = sorted(list(set([c.get("name") for c in view_customers() if c.get("name")])))
+                current_username = st.session_state.get("username", "")
+
+                for i, hotel in enumerate(filtered_hotels):
+                    h_name = hotel.get('name', 'Unknown')
+                    h_loc = hotel.get('location', 'Unknown')
+                    h_rate = hotel.get('rating', 0.0)
+                    
+                    with st.expander(f"🏨 {h_name} - {h_loc} ({h_rate} ⭐)"):
+                        st.markdown(f"**Location:** {h_loc} &nbsp;|&nbsp; **Rating:** {h_rate} ⭐")
+                        
+                        st.markdown("#### Select Rooms to Book")
+                        
+                        with st.form(f"form_book_{i}"):
+                            selected_rooms = []
+                            if rooms_list:
+                                for j, r in enumerate(rooms_list):
+                                    r_no = r.get("room_no")
+                                    r_type = r.get("type", "Unknown")
+                                    r_price = r.get("price", 0.0)
+                                    room_label = f"Room {r_no} ({r_type}) - ₹{r_price}/night"
+                                    if st.checkbox(room_label, key=f"chk_room_{i}_{j}"):
+                                        selected_rooms.append(r_no)
+                            else:
+                                st.info("No rooms available.")
+                            
+                            st.markdown("#### Guest Details")
+                            if is_admin and customers_list:
+                                customer = st.selectbox("Select Customer", options=["-- Select --"] + customers_list, key=f"cust_{i}")
+                            else:
+                                customer = st.text_input("Guest Name", value=current_username if not is_admin else "", key=f"inp_cust_{i}")
+                                
+                            checkin_date = st.date_input("Check-in Date", value=datetime.date.today(), key=f"date_{i}")
+                            
+                            submitted = st.form_submit_button("Confirm Booking", use_container_width=True)
+                            if submitted:
+                                if not selected_rooms:
+                                    st.error("Please select at least one room to book.")
+                                elif (is_admin and customers_list and customer == "-- Select --") or not customer:
+                                    st.error("Please provide guest details.")
+                                else:
+                                    success_count = 0
+                                    for room_no in selected_rooms:
+                                        result = add_booking(customer, str(room_no), str(checkin_date))
+                                        if result:
+                                            success_count += 1
+                                    if success_count == len(selected_rooms):
+                                        st.success(f"✅ Successfully booked {success_count} room(s) for {customer}!")
+                                    elif success_count > 0:
+                                        st.warning(f"⚠️ Partially booked {success_count} out of {len(selected_rooms)} rooms.")
+                                    else:
+                                        st.error("❌ Failed to create booking(s).")
+
                 st.caption(f"{len(filtered_hotels)} hotel(s) found")
             else:
                 st.info("No hotels match your filters.")
@@ -754,20 +808,20 @@ def page_bookings():
     with tab_add:
         st.markdown('<div class="form-title">Booking Details</div>', unsafe_allow_html=True)
 
-        # Pre-fill selectors from DB if data available
-        customers_list = [c.get("name", "") for c in view_customers()]
-        rooms_list     = [r.get("room_no", "") for r in view_rooms()]
+        # Pre-fill selectors from DB (Sorted to avoid set-shifting UI bugs)
+        customers_list = sorted(list(set([c.get("name") for c in view_customers() if c.get("name")])))
+        rooms_list     = sorted(list(set([str(r.get("room_no")) for r in view_rooms() if r.get("room_no")])))
 
         with st.form("add_booking_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
                 if customers_list:
-                    customer = st.selectbox("Customer *", options=customers_list)
+                    customer = st.selectbox("Customer *", options=["-- Select --"] + customers_list)
                 else:
                     customer = st.text_input("Customer Name *", placeholder="Enter customer name")
             with col2:
                 if rooms_list:
-                    room_no = st.selectbox("Room Number *", options=rooms_list)
+                    room_no = st.selectbox("Room Number *", options=["-- Select --"] + rooms_list)
                 else:
                     room_no = st.text_input("Room Number *", placeholder="e.g. 101")
 
@@ -775,7 +829,7 @@ def page_bookings():
             checkin_date = st.date_input("Check-in Date *", value=datetime.date.today())
             submitted = st.form_submit_button("📋  Confirm Booking", use_container_width=True)
             if submitted:
-                if not customer or not room_no:
+                if not customer or customer == "-- Select --" or not room_no or room_no == "-- Select --":
                     st.error("Customer and room fields are required.")
                 else:
                     result = add_booking(customer, str(room_no), str(checkin_date))
