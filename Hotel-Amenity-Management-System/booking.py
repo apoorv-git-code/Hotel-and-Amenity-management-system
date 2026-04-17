@@ -2,7 +2,6 @@ from database import db
 
 collection = db["bookings"]
 
-
 class Booking:
     def __init__(self, customer, room_no, date):
         self.customer = customer
