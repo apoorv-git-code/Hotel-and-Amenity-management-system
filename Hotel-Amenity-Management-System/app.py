@@ -6,11 +6,12 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from auth import authenticate_user, register_user
-from hotel import add_hotel, view_hotels
+from hotel import add_hotel, view_hotels, update_hotel
 from room import add_room, view_rooms
 from amenities import add_amenity, view_amenities
 from customers import add_customer, view_customers
-from booking import add_booking, view_bookings
+from booking import add_booking, view_bookings, cancel_booking
+from database import client
 
 # ─────────────────────────────────────────────────────────
 #  PAGE CONFIG
@@ -430,6 +431,13 @@ def render_auth():
                             st.error(f"❌  {msg}")
 
 
+def get_db_status():
+    try:
+        client.admin.command('ping')
+        return True
+    except Exception:
+        return False
+
 # ─────────────────────────────────────────────────────────
 #  SIDEBAR NAVIGATION
 # ─────────────────────────────────────────────────────────
@@ -440,7 +448,30 @@ def render_sidebar():
             <div style="font-size:1.6rem;font-weight:800;color:#f1f5f9;letter-spacing:-0.4px;">🏨 HotelOS</div>
             <div style="color:#334155;font-size:0.78rem;margin-top:2px;">Logged in as <b style="color:#6366f1">{st.session_state.username}</b></div>
         </div>
-        <hr style="margin:12px 0 20px;">
+        """, unsafe_allow_html=True)
+        
+        # MongoDB Live Monitor
+        db_status = get_db_status()
+        status_color = "#10b981" if db_status else "#ef4444"
+        status_text = "Online" if db_status else "Offline"
+        
+        st.markdown(f"""
+        <div style="background: rgba(15, 23, 42, 0.6); padding: 12px 16px; border-radius: 10px; margin: 10px 4px 24px; border: 1px solid rgba(99,102,241,0.2); display: flex; align-items: center; justify-content: space-between;">
+            <div style="font-size: 0.82rem; color: #cbd5e1; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 1rem;">🍃</span> MongoDB Data
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.2); padding: 4px 10px; border-radius: 20px;">
+                <div style="width: 8px; height: 8px; border-radius: 50%; background: {status_color}; box-shadow: 0 0 8px {status_color}; animation: pulse 2s infinite;"></div>
+                <div style="font-size: 0.72rem; color: {status_color}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">{status_text}</div>
+            </div>
+        </div>
+        <style>
+        @keyframes pulse {{
+            0% {{ opacity: 1; }}
+            50% {{ opacity: 0.5; }}
+            100% {{ opacity: 1; }}
+        }}
+        </style>
         <div style="color:#475569;font-size:0.72rem;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;padding: 0 4px 8px;">Navigation</div>
         """, unsafe_allow_html=True)
 
@@ -482,15 +513,19 @@ def page_dashboard():
     bookings  = view_bookings()
 
     is_admin = st.session_state.get("username", "").lower() == "admin"
+    current_username = st.session_state.get("username", "")
+
+    if not is_admin:
+        bookings = [b for b in bookings if b.get("customer", "") == current_username or b.get("customer_id", "") == current_username]
 
     metrics = [
         ("🏨", len(hotels),    "Hotels"),
-        ("🛏️", len(rooms),     "Rooms"),
+        ("🛏️", len(view_rooms()),     "Rooms"),
         ("🌟", len(amenities), "Amenities"),
     ]
     if is_admin:
         metrics.append(("👤", len(customers), "Customers"))
-    metrics.append(("📋", len(bookings),  "Bookings"))
+    metrics.append(("📋", len(bookings),  "Bookings" if is_admin else "My Bookings"))
 
     cols = st.columns(len(metrics))
     for col, (icon, val, label) in zip(cols, metrics):
@@ -515,8 +550,25 @@ def page_dashboard():
         section_header("📋", "Recent Bookings")
         if bookings:
             import pandas as pd
-            df = pd.DataFrame(bookings)[["customer", "room_no", "date"]].head(5)
-            df.columns = ["Customer", "Room No.", "Check-in Date"]
+            
+            customer_map = {}
+            for c in view_customers():
+                real_name = c.get("name") or c.get("customer_name") or "Unknown"
+                for key in ["id", "customer_id", "email_id", "email", "name", "customer_name"]:
+                    if c.get(key):
+                        customer_map[str(c.get(key))] = real_name
+
+            mapped = []
+            for b in bookings:
+                raw_c = str(b.get("customer") or b.get("customer_id", "Unknown"))
+                g_name = customer_map.get(raw_c, raw_c)
+                mapped.append({
+                    "Customer": g_name,
+                    "Room No.": b.get("room_no") or b.get("room_number", "Unknown"),
+                    "Check-in Date": b.get("date") or b.get("check_in", "Unknown"),
+                    "Check-out Date": b.get("checkout_date", "N/A")
+                })
+            df = pd.DataFrame(mapped).head(5)
             st.dataframe(df, use_container_width=True, hide_index=True)
         else:
             st.markdown('<div class="empty-state"><div class="es-icon">📋</div><div class="es-text">No bookings yet</div></div>', unsafe_allow_html=True)
@@ -527,7 +579,7 @@ def page_hotels():
 
     is_admin = st.session_state.get("username", "").lower() == "admin"
     if is_admin:
-        tab_view, tab_add = st.tabs(["📋  View All Hotels", "➕  Register Hotel"])
+        tab_view, tab_add, tab_update = st.tabs(["📋  View All Hotels", "➕  Register Hotel", "✏️  Update Hotel"])
     else:
         tab_view, = st.tabs(["📋  View All Hotels"])
 
@@ -535,88 +587,155 @@ def page_hotels():
         hotels = view_hotels()
         if hotels:
             import pandas as pd
-            hotel_names = ["All"] + sorted(list(set([h.get("name", "") for h in hotels if h.get("name")])))
-            locations = ["All"] + sorted(list(set([h.get("location", "") for h in hotels if h.get("location")])))
+            import datetime
+            locations = ["Anywhere"] + sorted(list(set([h.get("location", "") for h in hotels if h.get("location")])))
             
-            st.markdown("##### Filter Hotels")
-            col_a, col_b, col_c = st.columns(3)
+            # Booking-style Hero Banner & Search Console
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 36px 40px; border-radius: 16px; margin-bottom: 28px; border: 1px solid rgba(99,102,241,0.25); box-shadow: 0 15px 40px rgba(0,0,0,0.4); position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; background: radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%); border-radius: 50%;"></div>
+                <h2 style="color: #f8fafc; font-size: 2.2rem; margin-top: 0; margin-bottom: 12px; font-weight: 800; letter-spacing: -0.5px;">Find your next stay</h2>
+                <p style="color: #94a3b8; font-size: 1.05rem; margin-bottom: 26px; font-weight: 400;">Search competitive prices on hotels, homes, and much more...</p>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("##### 🔍 Search Criteria")
+            col_a, col_b = st.columns([1.5, 1])
             with col_a:
-                filter_name = st.selectbox("Hotel Name (Drop bar)", hotel_names)
+                filter_location = st.selectbox("📍 Destination / Location", locations)
             with col_b:
-                filter_location = st.selectbox("Location (Drop bar)", locations)
-            with col_c:
-                filter_rating = st.slider("Min Rating (Dragbar)", min_value=1.0, max_value=5.0, step=0.5, value=1.0)
+                filter_rating = st.selectbox("⭐ Min. Rating", ["Any", "3+ Stars", "4+ Stars", "5 Stars"])
             
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+            # Filter Application Logic
             filtered_hotels = hotels
-            if filter_name != "All":
-                filtered_hotels = [h for h in filtered_hotels if h.get("name") == filter_name]
-            if filter_location != "All":
+            if filter_location != "Anywhere":
                 filtered_hotels = [h for h in filtered_hotels if h.get("location") == filter_location]
-            filtered_hotels = [h for h in filtered_hotels if float(h.get("rating", 0)) >= filter_rating]
+            
+            if filter_rating != "Any":
+                min_stars = int(filter_rating[0])
+                filtered_hotels = [h for h in filtered_hotels if float(h.get("rating", 0)) >= min_stars]
+                
+            st.markdown(f"<h3 style='color: #f1f5f9; font-size: 1.4rem; margin-bottom: 16px;'>{len(filtered_hotels)} Properties match your search</h3>", unsafe_allow_html=True)
             
             if filtered_hotels:
-                import datetime
-                
-                rooms_list = view_rooms()
-                # Get unique, sorted customer names to avoid option shifting and Streamlit errors
+                import urllib.parse
+                import hashlib
                 customers_list = sorted(list(set([c.get("name") for c in view_customers() if c.get("name")])))
                 current_username = st.session_state.get("username", "")
+                
+                # Fetch all active bookings to see which rooms are taken
+                all_bookings = view_bookings()
+                booked_rooms_set = set(str(b.get("room_no") or b.get("room_number", "")) for b in all_bookings)
 
                 for i, hotel in enumerate(filtered_hotels):
                     h_name = hotel.get('name', 'Unknown')
                     h_loc = hotel.get('location', 'Unknown')
                     h_rate = hotel.get('rating', 0.0)
                     
-                    with st.expander(f"🏨 {h_name} - {h_loc} ({h_rate} ⭐)"):
-                        st.markdown(f"**Location:** {h_loc} &nbsp;|&nbsp; **Rating:** {h_rate} ⭐")
+                    rooms_list = view_rooms(hotel_name=h_name)
+                    
+                    # Generate a unique stable seed based on the hotel name using md5 to avoid collisions
+                    seed = int(hashlib.md5(h_name.encode('utf-8')).hexdigest(), 16) % 10000 + 1
+                    # Use loremflickr to fetch a unique, stable luxury hotel image
+                    img_url = f"https://loremflickr.com/1200/500/hotel,luxury?lock={seed}"
+                    
+                    # Hotel Listing Card
+                    with st.container():
+                        st.markdown(f"""
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 0; margin-bottom: 20px; transition: transform 0.2s, background 0.2s; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
+                            <div style="height: 250px; width: 100%; background: url('{img_url}') center/cover no-repeat; border-bottom: 1px solid rgba(255,255,255,0.1);"></div>
+                            <div style="padding: 24px;">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px;">
+                                    <div>
+                                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                                            <h3 style="margin: 0; color: #f8fafc; font-size: 1.5rem; font-weight: 700;">{h_name}</h3>
+                                            <span style="background: rgba(16,185,129,0.2); color: #6ee7b7; padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">Featured</span>
+                                        </div>
+                                        <div style="color: #94a3b8; font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
+                                            <span>📍</span> <a href="#" style="color: #6366f1; text-decoration: none;">{h_loc}</a> • <span style="color: #cbd5e1;">Show on map</span>
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <div style="text-align: right;">
+                                                <div style="color: #f1f5f9; font-weight: 700; font-size: 0.9rem;">Excellent</div>
+                                                <div style="color: #64748b; font-size: 0.75rem;">Guest reviews</div>
+                                            </div>
+                                            <div style="background: #4f46e5; color: white; padding: 6px 10px; border-radius: 8px 8px 8px 0; font-weight: 800; font-size: 1rem;">{h_rate}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                         
-                        st.markdown("#### Select Rooms to Book")
-                        
-                        with st.form(f"form_book_{i}"):
-                            selected_rooms = []
-                            if rooms_list:
-                                for j, r in enumerate(rooms_list):
-                                    r_no = r.get("room_no")
-                                    r_type = r.get("type", "Unknown")
-                                    r_price = r.get("price", 0.0)
-                                    room_label = f"Room {r_no} ({r_type}) - ₹{r_price}/night"
-                                    if st.checkbox(room_label, key=f"chk_room_{i}_{j}"):
-                                        selected_rooms.append(r_no)
-                            else:
-                                st.info("No rooms available.")
+                        with st.expander(f"🛒 Check Availability & Book — {h_name}"):
+                            st.markdown("#### Select Rooms to Book")
                             
-                            st.markdown("#### Guest Details")
-                            if is_admin and customers_list:
-                                customer = st.selectbox("Select Customer", options=["-- Select --"] + customers_list, key=f"cust_{i}")
-                            else:
-                                customer = st.text_input("Guest Name", value=current_username if not is_admin else "", key=f"inp_cust_{i}")
-                                
-                            checkin_date = st.date_input("Check-in Date", value=datetime.date.today(), key=f"date_{i}")
-                            
-                            submitted = st.form_submit_button("Confirm Booking", use_container_width=True)
-                            if submitted:
-                                if not selected_rooms:
-                                    st.error("Please select at least one room to book.")
-                                elif (is_admin and customers_list and customer == "-- Select --") or not customer:
-                                    st.error("Please provide guest details.")
+                            with st.form(f"form_book_{i}"):
+                                selected_rooms = []
+                                if rooms_list:
+                                    for j, r in enumerate(rooms_list):
+                                        r_no = str(r.get("room_no"))
+                                        r_type = r.get("type", "Unknown")
+                                        r_price = r.get("price", 0.0)
+                                        is_booked = r_no in booked_rooms_set
+                                        
+                                        if is_booked:
+                                            st.markdown(f"<p style='color: #475569; margin: 4px 0 8px 30px; font-size: 0.95rem;'>🛏️ <s><b>Room {r_no}</b> ({r_type}) — ₹{r_price}/night</s> <span style='color: #ef4444; font-size: 0.8rem; font-weight: 600; margin-left: 6px;'>[Already Taken]</span></p>", unsafe_allow_html=True)
+                                        else:
+                                            room_label = f"🛏️ **Room {r_no}** ({r_type}) — ₹{r_price}/night"
+                                            if st.checkbox(room_label, key=f"chk_room_{i}_{j}"):
+                                                selected_rooms.append(r_no)
                                 else:
-                                    success_count = 0
-                                    for room_no in selected_rooms:
-                                        result = add_booking(customer, str(room_no), str(checkin_date))
-                                        if result:
-                                            success_count += 1
-                                    if success_count == len(selected_rooms):
-                                        st.success(f"✅ Successfully booked {success_count} room(s) for {customer}!")
-                                    elif success_count > 0:
-                                        st.warning(f"⚠️ Partially booked {success_count} out of {len(selected_rooms)} rooms.")
+                                    st.info("No rooms available currently.")
+                                
+                                st.markdown("#### 👤 Primary Guest Details")
+                                if is_admin and customers_list:
+                                    customer = st.selectbox("Select Customer from Directory", options=["-- Select --"] + customers_list, key=f"cust_{i}")
+                                else:
+                                    st.text_input("Guest Name", value=current_username, disabled=True, key=f"inp_cust_{i}")
+                                    customer = current_username
+                                    
+                                # Prevent booking more than 4 days ahead
+                                today = datetime.date.today()
+                                max_allowed = today + datetime.timedelta(days=4)
+                                
+                                default_checkin = today
+                                
+                                col_d1, col_d2 = st.columns(2)
+                                with col_d1:
+                                    checkin_date = st.date_input("Check-in Date", value=default_checkin, min_value=today, max_value=max_allowed, key=f"date_{i}")
+                                with col_d2:
+                                    # Default checkout to check-in + 1 day, bounded by max_allowed if needed
+                                    default_checkout = min(checkin_date + datetime.timedelta(days=1), max_allowed) if checkin_date < max_allowed else checkin_date
+                                    checkout_date = st.date_input("Check-out Date", value=default_checkout, min_value=checkin_date, max_value=max_allowed, key=f"cout_{i}")
+                                
+                                submitted = st.form_submit_button("💳 Confirm Secure Booking", use_container_width=True)
+                                if submitted:
+                                    if not selected_rooms:
+                                        st.error("Please select at least one room to book.")
+                                    elif (is_admin and customers_list and customer == "-- Select --") or not customer:
+                                        st.error("Please provide guest details.")
                                     else:
-                                        st.error("❌ Failed to create booking(s).")
-
-                st.caption(f"{len(filtered_hotels)} hotel(s) found")
+                                        success_count = 0
+                                        for room_no in selected_rooms:
+                                            result = add_booking(customer, str(room_no), str(checkin_date), str(checkout_date))
+                                            if result:
+                                                success_count += 1
+                                        if success_count == len(selected_rooms):
+                                            st.success(f"✅ Successfully booked {success_count} room(s) for {customer}!")
+                                            st.balloons()
+                                        elif success_count > 0:
+                                            st.warning(f"⚠️ Partially booked {success_count} out of {len(selected_rooms)} rooms.")
+                                        else:
+                                            st.error("❌ Failed to create booking(s).")
+                        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
             else:
                 st.info("No hotels match your filters.")
         else:
-            st.markdown('<div class="empty-state"><div class="es-icon">🏨</div><div class="es-text">No hotels found</div><div class="es-sub">Use the tab above to register your first hotel.</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="empty-state"><div class="es-icon">🏨</div><div class="es-text">No properties found</div><div class="es-sub">Use the tab above to list your first property.</div></div>', unsafe_allow_html=True)
 
     if is_admin:
         with tab_add:
@@ -639,6 +758,36 @@ def page_hotels():
                             st.rerun()
                         else:
                             st.error("❌  Failed to register hotel. Please check the details and try again.")
+                            
+        with tab_update:
+            st.markdown('<div class="form-title">Update Hotel Details</div>', unsafe_allow_html=True)
+            hotels_list = view_hotels()
+            if hotels_list:
+                hotel_names = sorted(list(set([h.get("name", "") for h in hotels_list if h.get("name")])))
+                selected_hotel_name = st.selectbox("Select Hotel to Update", options=["-- Select Hotel --"] + hotel_names)
+                
+                if selected_hotel_name != "-- Select Hotel --":
+                    # Get the current details to prefill
+                    selected_hotel = next((h for h in hotels_list if h.get("name") == selected_hotel_name), None)
+                    if selected_hotel:
+                        with st.form("update_hotel_form", clear_on_submit=False):
+                            st.markdown(f"**Updating:** {selected_hotel_name}")
+                            new_location = st.text_input("New Location (leave blank to keep current)", placeholder=selected_hotel.get("location", ""))
+                            curr_rating = selected_hotel.get("rating", 3.0)
+                            new_rating = st.slider("New Star Rating", min_value=1.0, max_value=5.0, step=0.1, value=float(curr_rating))
+                            
+                            submitted_update = st.form_submit_button("✏️  Update Hotel", use_container_width=True)
+                            if submitted_update:
+                                loc_to_update = new_location if new_location.strip() else None
+                                
+                                result = update_hotel(selected_hotel_name, location=loc_to_update, rating=new_rating)
+                                if result:
+                                    st.success(f"✅  **{selected_hotel_name}** has been updated successfully!")
+                                    st.rerun()
+                                else:
+                                    st.error("❌  Failed to update hotel. Please try again.")
+            else:
+                st.info("No hotels registered yet to update.")
 
 def page_rooms():
     section_header("🛏️", "Room Management")
@@ -653,8 +802,8 @@ def page_rooms():
         rooms = view_rooms()
         if rooms:
             import pandas as pd
-            df = pd.DataFrame(rooms)[["room_no", "type", "price"]]
-            df.columns = ["Room No.", "Type", "Price / Night (₹)"]
+            df = pd.DataFrame(rooms)[["hotel_name", "room_no", "type", "price"]]
+            df.columns = ["Hotel", "Room No.", "Type", "Price / Night (₹)"]
             st.dataframe(df, use_container_width=True, hide_index=True)
             st.caption(f"{len(rooms)} room(s) listed")
         else:
@@ -664,7 +813,11 @@ def page_rooms():
         with tab_add:
             st.markdown('<div class="form-title">Room Details</div>', unsafe_allow_html=True)
             with st.form("add_room_form", clear_on_submit=True):
-                col1, col2 = st.columns(2)
+                col0, col1, col2 = st.columns([1.5, 1, 1])
+                
+                hotels_av = [h.get("name") for h in view_hotels() if h.get("name")]
+                with col0:
+                    selected_hotel = st.selectbox("Hotel *", options=sorted(hotels_av) if hotels_av else ["-- None --"])
                 with col1:
                     room_no = st.text_input("Room Number *", placeholder="e.g. 101")
                 with col2:
@@ -672,12 +825,14 @@ def page_rooms():
                 price = st.number_input("Price Per Night (₹) *", min_value=0.0, step=100.0, value=2000.0)
                 submitted = st.form_submit_button("🛏️  Add Room", use_container_width=True)
                 if submitted:
-                    if not room_no:
-                        st.error("Room number is required.")
+                    if not room_no or not selected_hotel or selected_hotel == "-- None --":
+                        st.error("Hotel and Room number are required.")
                     else:
-                        result = add_room(room_no, room_type, price)
-                        if result:
-                            st.success(f"✅  Room **{room_no}** ({room_type}) added at ₹{price:,.0f}/night!")
+                        result = add_room(selected_hotel, room_no, room_type, price)
+                        if result == "duplicate":
+                            st.warning(f"⚠️  Room {room_no} already exists in {selected_hotel}! Please enter a unique room number.")
+                        elif result:
+                            st.success(f"✅  Room **{room_no}** ({room_type}) added to {selected_hotel} at ₹{price:,.0f}/night!")
                             st.rerun()
                         else:
                             st.error("❌  Failed to add room.")
@@ -758,8 +913,15 @@ def page_customers():
         customers = view_customers()
         if customers:
             import pandas as pd
-            df = pd.DataFrame(customers)[["name", "contact", "id"]]
-            df.columns = ["Full Name", "Contact", "Gov. ID / Passport"]
+            mapped_customers = []
+            for c in customers:
+                mapped_customers.append({
+                    "Full Name": c.get("name") or c.get("customer_name", "N/A"),
+                    "Contact": c.get("contact") or c.get("phone", "N/A"),
+                    "Email ID": c.get("email_id") or c.get("email") or c.get("id", "N/A"),
+                    "City": c.get("city", "N/A")
+                })
+            df = pd.DataFrame(mapped_customers)
             st.dataframe(df, use_container_width=True, hide_index=True)
             st.caption(f"{len(customers)} customer(s) registered")
         else:
@@ -774,70 +936,92 @@ def page_customers():
                     name = st.text_input("Full Name *", placeholder="e.g. Rahul Sharma")
                 with col2:
                     contact = st.text_input("Contact Number *", placeholder="e.g. +91-9876543210")
-                customer_id = st.text_input("Government ID / Passport No. *", placeholder="e.g. ABCDE1234F")
+                email_id = st.text_input("Email ID *", placeholder="e.g. user@example.com")
+                city = st.text_input("City *", placeholder="e.g. Mumbai")
                 submitted = st.form_submit_button("👤  Register Customer", use_container_width=True)
                 if submitted:
-                    if not name or not contact or not customer_id:
+                    if not name or not contact or not email_id or not city:
                         st.error("All fields are required.")
                     else:
-                        result = add_customer(name, contact, customer_id)
+                        result = add_customer(name, contact, email_id, city)
                         if result:
                             st.success(f"✅  Customer **{name}** registered!")
                             st.rerun()
                         else:
                             st.error("❌  Failed to register customer.")
 
-
 def page_bookings():
-    section_header("📋", "Booking Management")
+    section_header("📋", "Bookings & Reservations" if st.session_state.get("username", "").lower() == "admin" else "My Bookings")
 
+    bookings = view_bookings()
     is_admin = st.session_state.get("username", "").lower() == "admin"
-    tab_view, tab_add = st.tabs(["📋  Active Bookings", "➕  New Booking"])
+    current_username = st.session_state.get("username", "")
 
-    with tab_view:
-        bookings = view_bookings()
-        if bookings:
-            import pandas as pd
-            df = pd.DataFrame(bookings)[["customer", "room_no", "date"]]
-            df.columns = ["Customer Name", "Room No.", "Check-in Date"]
-            st.dataframe(df, use_container_width=True, hide_index=True)
-            st.caption(f"{len(bookings)} active booking(s)")
-        else:
-            st.markdown('<div class="empty-state"><div class="es-icon">📋</div><div class="es-text">No bookings found</div><div class="es-sub">Create a new booking using the tab above.</div></div>', unsafe_allow_html=True)
+    if not is_admin:
+        bookings = [b for b in bookings if b.get("customer", "") == current_username or b.get("customer_id", "") == current_username]
 
-    with tab_add:
-        st.markdown('<div class="form-title">Booking Details</div>', unsafe_allow_html=True)
+    if bookings:
+        import pandas as pd
+        
+        customer_map = {}
+        for c in view_customers():
+            real_name = c.get("name") or c.get("customer_name") or "Unknown"
+            for key in ["id", "customer_id", "email_id", "email", "name", "customer_name"]:
+                if c.get(key):
+                    customer_map[str(c.get(key))] = real_name
 
-        # Pre-fill selectors from DB (Sorted to avoid set-shifting UI bugs)
-        customers_list = sorted(list(set([c.get("name") for c in view_customers() if c.get("name")])))
-        rooms_list     = sorted(list(set([str(r.get("room_no")) for r in view_rooms() if r.get("room_no")])))
+        mapped_bookings = []
+        cancellation_options = {}
+        for b in bookings:
+            raw_c = str(b.get("customer") or b.get("customer_id", "Unknown"))
+            g_name = customer_map.get(raw_c, raw_c)
+            r_no = b.get("room_no") or b.get("room_number", "Unknown")
+            c_in = b.get("date") or b.get("check_in", "Unknown")
+            c_out = b.get("checkout_date", "N/A")
+            b_id = str(b.get("_id", ""))
+            
+            mapped_bookings.append({
+                "ID": b_id,
+                "Guest Name": g_name,
+                "Room Number": r_no,
+                "Check-in Date": c_in,
+                "Check-out Date": c_out
+            })
+            
+            if b_id:
+                label = f"[{b_id[-4:]}] {g_name} — Room {r_no} ({c_in})"
+                cancellation_options[label] = b_id
 
-        with st.form("add_booking_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                if customers_list:
-                    customer = st.selectbox("Customer *", options=["-- Select --"] + customers_list)
-                else:
-                    customer = st.text_input("Customer Name *", placeholder="Enter customer name")
-            with col2:
-                if rooms_list:
-                    room_no = st.selectbox("Room Number *", options=["-- Select --"] + rooms_list)
-                else:
-                    room_no = st.text_input("Room Number *", placeholder="e.g. 101")
-
-            import datetime
-            checkin_date = st.date_input("Check-in Date *", value=datetime.date.today())
-            submitted = st.form_submit_button("📋  Confirm Booking", use_container_width=True)
-            if submitted:
-                if not customer or customer == "-- Select --" or not room_no or room_no == "-- Select --":
-                    st.error("Customer and room fields are required.")
-                else:
-                    result = add_booking(customer, str(room_no), str(checkin_date))
-                    if result:
-                        st.success(f"✅  Booking confirmed for **{customer}** in Room **{room_no}** on **{checkin_date}**!")
-                        st.rerun()
+        df = pd.DataFrame(mapped_bookings)
+        
+        st.dataframe(df.drop(columns=["ID"]), use_container_width=True, hide_index=True)
+        st.caption(f"Total: {len(bookings)} reservation(s) in system")
+        
+        st.markdown("<hr style='margin:24px 0; border-color: rgba(99,102,241,0.2);'>", unsafe_allow_html=True)
+        st.markdown("#### Manage Reservations")
+        with st.expander("🗑️ Cancel a Booking"):
+            with st.form("cancel_booking_form"):
+                selected_label = st.selectbox("Select Booking to Cancel", options=["-- Select --"] + list(cancellation_options.keys()))
+                submitted = st.form_submit_button("Cancel Booking")
+                if submitted:
+                    if selected_label == "-- Select --":
+                        st.error("Please select a booking to cancel.")
                     else:
-                        st.error("❌  Failed to create booking.")
+                        booking_id_to_cancel = cancellation_options[selected_label]
+                        res = cancel_booking(booking_id_to_cancel)
+                        if res and res.deleted_count > 0:
+                            st.success("✅ Booking cancelled successfully!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to cancel booking. It may have already been deleted.")
+    else:
+        st.markdown("""
+        <div class="empty-state">
+            <div class="es-icon">📋</div>
+            <div class="es-text">No active bookings</div>
+            <div class="es-sub">Reservations will appear here once guests book a room through the Hotels registry.</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────
@@ -846,28 +1030,28 @@ def page_bookings():
 def main():
     if not st.session_state.authenticated:
         render_auth()
-        return
-
-    render_sidebar()
-
-    page = st.session_state.page
-    if page == "Dashboard":
-        page_dashboard()
-    elif page == "Hotels":
-        page_hotels()
-    elif page == "Rooms":
-        page_rooms()
-    elif page == "Amenities":
-        page_amenities()
-    elif page == "Customers":
-        is_admin = st.session_state.get("username", "").lower() == "admin"
-        if is_admin:
-            page_customers()
-        else:
-            st.error("🔒 Access Denied: Administrator privileges required.")
-    elif page == "Bookings":
-        page_bookings()
-
+    else:
+        render_sidebar()
+        
+        # Route to the selected page
+        if st.session_state.page == "Dashboard":
+            page_dashboard()
+        elif st.session_state.page == "Hotels":
+            page_hotels()
+        elif st.session_state.page == "Rooms":
+            page_rooms()
+        elif st.session_state.page == "Amenities":
+            page_amenities()
+        elif st.session_state.page == "Customers":
+            # Extra security layer for the admin-only customer page
+            if st.session_state.get("username", "").lower() == "admin":
+                page_customers()
+            else:
+                st.error("Access Denied: You do not have permission to view the Customer Directory.")
+                st.session_state.page = "Dashboard"
+                st.rerun()
+        elif st.session_state.page == "Bookings":
+            page_bookings()
 
 if __name__ == "__main__":
     main()
