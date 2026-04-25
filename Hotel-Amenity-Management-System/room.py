@@ -72,3 +72,8 @@ def view_rooms(hotel_name=None):
 
 def delete_room(room_no):
     return collection.delete_one({"room_no": room_no})
+
+if __name__ == "__main__":
+    print("Rooms:")
+    for r in view_rooms():
+        print(r)

@@ -516,7 +516,7 @@ def page_dashboard():
     current_username = st.session_state.get("username", "")
 
     if not is_admin:
-        bookings = [b for b in bookings if b.get("customer", "") == current_username or b.get("customer_id", "") == current_username]
+        bookings = [b for b in bookings if b.get("booked_by", "") == current_username or b.get("customer", "") == current_username or b.get("customer_id", "") == current_username]
 
     metrics = [
         ("🏨", len(hotels),    "Hotels"),
@@ -616,7 +616,7 @@ def page_hotels():
                 min_stars = int(filter_rating[0])
                 filtered_hotels = [h for h in filtered_hotels if float(h.get("rating", 0)) >= min_stars]
                 
-            st.markdown(f"<h3 style='color: #f1f5f9; font-size: 1.4rem; margin-bottom: 16px;'>{len(filtered_hotels)} Properties match your search</h3>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='color: #f1f5f9; font-size: 1.4rem; margin-bottom: 16px;'>Properties match your search</h3>", unsafe_allow_html=True)
             
             if filtered_hotels:
                 import urllib.parse
@@ -695,8 +695,7 @@ def page_hotels():
                                 if is_admin and customers_list:
                                     customer = st.selectbox("Select Customer from Directory", options=["-- Select --"] + customers_list, key=f"cust_{i}")
                                 else:
-                                    st.text_input("Guest Name", value=current_username, disabled=True, key=f"inp_cust_{i}")
-                                    customer = current_username
+                                    customer = st.text_input("Guest Name", placeholder="Enter actual guest name", key=f"inp_cust_{i}")
                                     
                                 # Prevent booking more than 4 days ahead
                                 today = datetime.date.today()
@@ -721,7 +720,7 @@ def page_hotels():
                                     else:
                                         success_count = 0
                                         for room_no in selected_rooms:
-                                            result = add_booking(customer, str(room_no), str(checkin_date), str(checkout_date))
+                                            result = add_booking(customer or current_username, str(room_no), str(checkin_date), str(checkout_date), booked_by=current_username)
                                             if result:
                                                 success_count += 1
                                         if success_count == len(selected_rooms):
@@ -958,7 +957,7 @@ def page_bookings():
     current_username = st.session_state.get("username", "")
 
     if not is_admin:
-        bookings = [b for b in bookings if b.get("customer", "") == current_username or b.get("customer_id", "") == current_username]
+        bookings = [b for b in bookings if b.get("booked_by", "") == current_username or b.get("customer", "") == current_username or b.get("customer_id", "") == current_username]
 
     if bookings:
         import pandas as pd

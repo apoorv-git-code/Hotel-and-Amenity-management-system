@@ -8,3 +8,8 @@ amenities = db["amenities"]
 bookings = db["bookings"]
 customers = db["customers"]
 users = db["users"]
+
+if __name__ == "__main__":
+    print("Connected to MongoDB database:")
+    print("Database:", db.name)
+    print("Collections:", db.list_collection_names())

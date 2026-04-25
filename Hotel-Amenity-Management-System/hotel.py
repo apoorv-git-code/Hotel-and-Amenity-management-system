@@ -80,3 +80,8 @@ def update_hotel(name, location=None, rating=None):
         return None
 
     return collection.update_one({"_id": target_hotel["_id"]}, {"$set": updates})
+
+if __name__ == "__main__":
+    print("Hotels:")
+    for h in view_hotels():
+        print(h)

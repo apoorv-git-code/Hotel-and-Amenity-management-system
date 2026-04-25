@@ -20,3 +20,8 @@ def authenticate_user(username, password):
     if user and user["password"] == hash_password(password):
         return True, "Login successful"
     return False, "Invalid username or password"
+
+if __name__ == "__main__":
+    print("Users in database:")
+    for user in collection.find():
+        print(user)

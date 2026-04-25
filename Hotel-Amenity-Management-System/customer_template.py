@@ -13,3 +13,9 @@ class Customer:
             "city": self.city
         }
 
+if __name__ == "__main__":
+    sample_customer = Customer("Test User", "1234567890", "test@example.com", "Test City")
+    print("Sample Customer:")
+    print(sample_customer.to_dict())
+
+

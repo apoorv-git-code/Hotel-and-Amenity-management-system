@@ -32,3 +32,8 @@ def update_customer(name, new_contact=None, new_email=None, new_city=None):
 
 def delete_customer(name):
     return collection.delete_one({"name": name})
+
+if __name__ == "__main__":
+    print("Customers:")
+    for c in view_customers():
+        print(c)

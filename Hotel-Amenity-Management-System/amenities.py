@@ -22,3 +22,9 @@ def view_amenities():
 
 def delete_amenity(name):
     return collection.delete_one({"name": name})
+
+if __name__ == "__main__":
+    print("Amenities:")
+    for a in view_amenities():
+        print(a)
+
