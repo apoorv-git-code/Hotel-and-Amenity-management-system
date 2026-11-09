@@ -1,0 +1,30 @@
+hotel_name,location,rating,room_number,room_type,price_per_night
+Taj Palace,Mumbai,5,101,Single,4500
+Taj Palace,Mumbai,5,102,Double,6500
+Taj Palace,Mumbai,5,201,Suite,12000
+Taj Palace,Mumbai,5,301,Presidential Suite,35000
+Grand Hyatt,Delhi,5,101,Single,4000
+Grand Hyatt,Delhi,5,102,Double,6000
+Grand Hyatt,Delhi,5,201,Deluxe,8500
+Grand Hyatt,Delhi,5,401,Penthouse,40000
+Sea View Resort,Goa,4,101,Single,3500
+Sea View Resort,Goa,4,102,Double,5000
+Sea View Resort,Goa,4,201,Suite,9000
+Sea View Resort,Goa,4,301,Deluxe,7500
+Royal Orchid,Bangalore,4,101,Single,3200
+Royal Orchid,Bangalore,4,102,Double,5200
+Royal Orchid,Bangalore,4,201,Suite,9500
+Royal Orchid,Bangalore,4,401,Presidential Suite,28000
+Budget Inn,Jaipur,3,101,Single,1500
+Budget Inn,Jaipur,3,102,Double,2500
+Budget Inn,Jaipur,3,201,Deluxe,3500
+Elite Residency,Chennai,5,101,Single,4200
+Elite Residency,Chennai,5,102,Double,6200
+Elite Residency,Chennai,5,201,Suite,11000
+Elite Residency,Chennai,5,501,Penthouse,38000
+Mountain Retreat,Manali,4,101,Single,3000
+Mountain Retreat,Manali,4,102,Double,4800
+Mountain Retreat,Manali,4,201,Suite,8700
+Lake View Hotel,Udaipur,5,101,Single,4700
+Lake View Hotel,Udaipur,5,102,Double,6900
+Lake View Hotel,Udaipur,5,301,Presidential Suite,33000

@@ -10,6 +10,7 @@ from customers import add_customer, view_customers
 from database import client
 from hotel import add_hotel, update_hotel, view_hotels
 from room import add_room, view_rooms
+from seed_data import seed_hotel_dataset
 
 # ─────────────────────────────────────────────────────────
 #  PAGE CONFIG
@@ -1323,7 +1324,21 @@ def page_bookings():
 # ─────────────────────────────────────────────────────────
 #  MAIN ROUTER
 # ─────────────────────────────────────────────────────────
+@st.cache_resource(show_spinner=False)
+def initialize_hotel_dataset():
+    return seed_hotel_dataset()
+
+
 def main():
+    try:
+        initialize_hotel_dataset()
+    except PyMongoError as error:
+        st.error(
+            "Could not load the hotel catalog from MongoDB. Check the MONGODB_URI "
+            f"and Atlas network access. Details: {error}"
+        )
+        return
+
     if not st.session_state.authenticated:
         render_auth()
     else:

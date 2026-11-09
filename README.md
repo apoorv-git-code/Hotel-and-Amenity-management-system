@@ -43,11 +43,16 @@ Render builds with `pip install -r requirements.txt`, starts Streamlit on Render
 - Hotel room data is loaded once per page instead of querying once per hotel.
 - The interface uses local system fonts and CSS artwork instead of making external font or hotel-image requests.
 
+## Sample hotel catalog
+
+The bundled `hotel_dataset.csv` contains 8 hotels and 29 rooms. The app adds any missing entries to MongoDB when it starts; existing matching records are left unchanged. Customers can browse the catalog in the Hotels and Rooms sections. The CSV does not contain links to the hotels' own websites.
+
 ## Project files
 
 - `app.py`: Streamlit UI and page routing
 - `database.py`: MongoDB configuration and shared client
 - `auth.py`: User registration and login
+- `hotel_dataset.csv`: Sample hotel and room catalog loaded into MongoDB
 - `hotel.py`, `room.py`, `amenities.py`, `customers.py`, `booking.py`: Collection operations
 - `main.py`: Local Streamlit launcher
 - `render.yaml` (repository root): Render Blueprint deployment configuration
