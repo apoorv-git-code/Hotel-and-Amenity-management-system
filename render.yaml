@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: hotel-amenity-management
+    runtime: python
+    plan: free
+    rootDir: Downloads/Hotel-and-Amenity-management-system-main
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.address=0.0.0.0 --server.port $PORT --server.headless=true --browser.gatherUsageStats=false
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DATABASE
+        value: hotel_management
