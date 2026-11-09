@@ -28,7 +28,7 @@ A Streamlit application for managing hotels, rooms, amenities, customers, and bo
 
 ## Deploy on Render
 
-The GitHub repository currently stores this app in `Downloads/Hotel-and-Amenity-management-system-main`. The root `render.yaml` configures that directory as the service root.
+The app and its `render.yaml` deployment configuration are in the repository root.
 
 1. Create a Render Blueprint from the repository and select the `main` branch.
 2. When prompted, set the secret `MONGODB_URI` to your MongoDB Atlas connection string. Do not commit credentials.

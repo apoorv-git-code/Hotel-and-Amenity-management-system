@@ -3,7 +3,6 @@ services:
     name: hotel-amenity-management
     runtime: python
     plan: free
-    rootDir: Hotel-and-Amenity-management-system-main
     buildCommand: pip install -r requirements.txt
     startCommand: streamlit run app.py --server.address=0.0.0.0 --server.port $PORT --server.headless=true --browser.gatherUsageStats=false
     healthCheckPath: /_stcore/health
